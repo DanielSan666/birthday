@@ -1,3 +1,4 @@
+import 'package:birthday/services/notifications_service.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:toastification/toastification.dart';
@@ -15,7 +16,8 @@ Future<void> addEvent({
   required Color selectedTagColor,
 }) async {
   try {
-    // Guardar el evento en Firebase
+    final eventId = DateTime.now().millisecondsSinceEpoch % 100000;
+
     await FirebaseFirestore.instance.collection('birthday').add({
       'date': today.toIso8601String(),
       'title': eventTitleController.text,
@@ -26,14 +28,24 @@ Future<void> addEvent({
       'startTime': startTime?.toIso8601String(),
       'endTime': endTime?.toIso8601String(),
       'tagColor': selectedTagColor.value,
+      'notificationId': eventId,
     });
 
-    // Limpiar los campos después de guardar
+    // Programar notificación si hay hora de inicio
+    if (startTime != null) {
+      await NotificationService.scheduleEventNotification(
+        id: eventId,
+        title: 'Recordatorio: ${eventTitleController.text}',
+        body: 'El evento comienza pronto en ${locationController.text}',
+        scheduledTime: startTime,
+        color: selectedTagColor,
+      );
+    }
+
     eventTitleController.clear();
     locationController.clear();
     notesController.clear();
 
-    // Mostrar toast de éxito
     toastification.show(
       context: context,
       title: Text("Evento guardado"),
@@ -50,6 +62,76 @@ Future<void> addEvent({
   }
 }
 
+Future<void> editEvent({
+  required BuildContext context,
+  required DocumentSnapshot event,
+  required DateTime today,
+  required TextEditingController eventTitleController,
+  required TextEditingController locationController,
+  required TextEditingController notesController,
+  required bool isAllDay,
+  required bool isRepeating,
+  required DateTime? startTime,
+  required DateTime? endTime,
+  required Color selectedTagColor,
+}) async {
+  try {
+    final eventData = event.data() as Map<String, dynamic>;
+    final eventId =
+        eventData['notificationId'] ??
+        DateTime.now().millisecondsSinceEpoch % 100000;
+
+    // Cancelar notificación anterior si existe
+    await NotificationService.cancelScheduledNotification(eventId);
+
+    // Actualizar el evento en Firebase
+    await FirebaseFirestore.instance
+        .collection('birthday')
+        .doc(event.id)
+        .update({
+          'date': today.toIso8601String(),
+          'title': eventTitleController.text,
+          'location': locationController.text,
+          'notes': notesController.text,
+          'isAllDay': isAllDay,
+          'isRepeating': isRepeating,
+          'startTime': startTime?.toIso8601String(),
+          'endTime': endTime?.toIso8601String(),
+          'tagColor': selectedTagColor.value,
+          'notificationId': eventId,
+        });
+
+    // Programar nueva notificación si hay hora de inicio
+    if (startTime != null) {
+      await NotificationService.scheduleEventNotification(
+        id: eventId,
+        title: 'Recordatorio: ${eventTitleController.text}',
+        body: 'El evento comienza pronto en ${locationController.text}',
+        scheduledTime: startTime,
+        color: selectedTagColor,
+      );
+    }
+
+    eventTitleController.clear();
+    locationController.clear();
+    notesController.clear();
+
+    toastification.show(
+      context: context,
+      title: Text("Evento actualizado"),
+      description: Text("El evento se ha actualizado correctamente."),
+      type: ToastificationType.info,
+      style: ToastificationStyle.flatColored,
+      autoCloseDuration: Duration(seconds: 3),
+    );
+  } catch (e) {
+    print("Error al actualizar el evento: $e");
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text("Error al actualizar el evento")));
+  }
+}
+
 Future<void> deleteEvent({
   required BuildContext context,
   required DocumentSnapshot event,
@@ -62,15 +144,11 @@ Future<void> deleteEvent({
         content: Text("¿Estás seguro de que deseas eliminar este evento?"),
         actions: [
           TextButton(
-            onPressed: () {
-              Navigator.of(context).pop(false);
-            },
+            onPressed: () => Navigator.of(context).pop(false),
             child: Text("Cancelar"),
           ),
           TextButton(
-            onPressed: () {
-              Navigator.of(context).pop(true);
-            },
+            onPressed: () => Navigator.of(context).pop(true),
             child: Text("Eliminar"),
           ),
         ],
@@ -80,10 +158,19 @@ Future<void> deleteEvent({
 
   if (confirmDelete == true) {
     try {
+      final eventData = event.data() as Map<String, dynamic>;
+      final eventId = eventData['notificationId'];
+
+      // Cancelar notificación si existe
+      if (eventId != null) {
+        await NotificationService.cancelScheduledNotification(eventId);
+      }
+
       await FirebaseFirestore.instance
           .collection('birthday')
           .doc(event.id)
           .delete();
+
       toastification.show(
         context: context,
         title: Text("Evento eliminado"),
@@ -107,59 +194,5 @@ Future<void> deleteEvent({
       style: ToastificationStyle.flatColored,
       autoCloseDuration: Duration(seconds: 3),
     );
-  }
-}
-
-Future<void> editEvent({
-  required BuildContext context,
-  required DocumentSnapshot event,
-  required DateTime today,
-  required TextEditingController eventTitleController,
-  required TextEditingController locationController,
-  required TextEditingController notesController,
-  required bool isAllDay,
-  required bool isRepeating,
-  required DateTime? startTime,
-  required DateTime? endTime,
-  required Color selectedTagColor,
-}) async {
-  try {
-    // Actualizar el evento en Firebase
-    await FirebaseFirestore.instance
-        .collection('birthday')
-        .doc(event.id)
-        .update({
-          'date': today.toIso8601String(),
-          'title': eventTitleController.text,
-          'location': locationController.text,
-          'notes': notesController.text,
-          'isAllDay': isAllDay,
-          'isRepeating': isRepeating,
-          'startTime': startTime?.toIso8601String(),
-          'endTime': endTime?.toIso8601String(),
-          'tagColor': selectedTagColor.value,
-        });
-
-    // Programar notificación
-
-    // Limpiar los campos después de guardar
-    eventTitleController.clear();
-    locationController.clear();
-    notesController.clear();
-
-    // Mostrar toast de éxito
-    toastification.show(
-      context: context,
-      title: Text("Evento actualizado"),
-      description: Text("El evento se ha actualizado correctamente."),
-      type: ToastificationType.info,
-      style: ToastificationStyle.flatColored,
-      autoCloseDuration: Duration(seconds: 3),
-    );
-  } catch (e) {
-    print("Error al actualizar el evento: $e");
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text("Error al actualizar el evento")));
   }
 }

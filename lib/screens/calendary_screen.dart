@@ -1,6 +1,5 @@
-import 'package:birthday/functions/calendar_api.dart';
-import 'package:birthday/screens/openstreetmap.dart';
 import 'package:flutter/material.dart';
+import 'package:birthday/services/firebase_functions.dart';
 import 'package:table_calendar/table_calendar.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
@@ -14,16 +13,14 @@ class CalendaryScreen extends StatefulWidget {
 
 class _CalendaryScreenState extends State<CalendaryScreen> {
   DateTime today = DateTime.now();
-  bool isAllDay = false; // Estado del switch "All day"
-  bool isRepeating = false; // Estado del switch "Repeat"
+  bool isAllDay = false;
+  bool isRepeating = false;
   TextEditingController eventTitleController = TextEditingController();
-  TextEditingController locationController =
-      TextEditingController(); // Controlador de ubicación
-  TextEditingController notesController =
-      TextEditingController(); // Controlador de notas
+  TextEditingController locationController = TextEditingController();
+  TextEditingController notesController = TextEditingController();
   DateTime? startTime;
   DateTime? endTime;
-  Color selectedTagColor = Colors.blue; // Color por defecto de la etiqueta
+  Color selectedTagColor = Colors.blue;
 
   @override
   void dispose() {
@@ -104,18 +101,6 @@ class _CalendaryScreenState extends State<CalendaryScreen> {
                           ),
                         ),
                         SizedBox(width: 10),
-                        IconButton(
-                          icon: Icon(Icons.location_on, color: Colors.blue),
-                          onPressed: () {
-                            // Navegar a otra pantalla
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) => Openstreetmap(),
-                              ),
-                            );
-                          },
-                        ),
                       ],
                     ),
                     SizedBox(height: 10),
@@ -298,7 +283,6 @@ class _CalendaryScreenState extends State<CalendaryScreen> {
                             );
                           }
 
-                          // Limpiar los campos después de guardar
                           eventTitleController.clear();
                           locationController.clear();
                           notesController.clear();
@@ -310,10 +294,7 @@ class _CalendaryScreenState extends State<CalendaryScreen> {
                             selectedTagColor = Colors.blue;
                           });
 
-                          // Cierra el modal
                           Navigator.pop(context);
-
-                          // Mostrar toast de éxito
                         } catch (e) {
                           print("Error al guardar el evento: $e");
                           ScaffoldMessenger.of(context).showSnackBar(
@@ -339,7 +320,6 @@ class _CalendaryScreenState extends State<CalendaryScreen> {
         );
       },
     ).whenComplete(() {
-      // Limpiar los campos después de cerrar el modal
       eventTitleController.clear();
       locationController.clear();
       notesController.clear();
@@ -428,7 +408,7 @@ class _CalendaryScreenState extends State<CalendaryScreen> {
                         .snapshots(),
                 builder: (context, snapshot) {
                   if (!snapshot.hasData) {
-                    return CircularProgressIndicator();
+                    return Center(child: CircularProgressIndicator());
                   }
                   final events =
                       snapshot.data!.docs.where((event) {
@@ -436,6 +416,7 @@ class _CalendaryScreenState extends State<CalendaryScreen> {
                         final eventDate = DateTime.parse(eventData['date']);
                         return isSameDay(eventDate, today);
                       }).toList();
+
                   return ListView.builder(
                     itemCount: events.length,
                     itemBuilder: (context, index) {
@@ -459,10 +440,11 @@ class _CalendaryScreenState extends State<CalendaryScreen> {
                               : 'No end time';
 
                       return Card(
+                        margin: EdgeInsets.only(bottom: 10),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(15),
                         ),
-                        color: eventTagColor, // Color del evento
+                        color: eventTagColor,
                         elevation: 4,
                         child: InkWell(
                           onTap: () {
@@ -473,36 +455,45 @@ class _CalendaryScreenState extends State<CalendaryScreen> {
                             child: Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
-                                Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      "$eventStartTime - $eventEndTime", // Rango de horas
-                                      style: TextStyle(
-                                        fontSize: 14,
-                                        color: Colors.white.withOpacity(0.8),
-                                        fontWeight: FontWeight.w500,
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        "$eventStartTime - $eventEndTime",
+                                        style: TextStyle(
+                                          fontSize: 14,
+                                          color: Colors.white.withOpacity(0.8),
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                        overflow: TextOverflow.ellipsis,
+                                        maxLines: 1,
                                       ),
-                                    ),
-                                    SizedBox(height: 5),
-                                    Text(
-                                      eventTitle, // Título del evento
-                                      style: TextStyle(
-                                        fontSize: 18,
-                                        color: Colors.white,
-                                        fontWeight: FontWeight.bold,
+                                      SizedBox(height: 5),
+                                      Text(
+                                        eventTitle,
+                                        style: TextStyle(
+                                          fontSize: 18,
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                        overflow: TextOverflow.ellipsis,
+                                        maxLines: 1,
                                       ),
-                                    ),
-                                    SizedBox(height: 5),
-                                    Text(
-                                      eventLocation, // Ubicación
-                                      style: TextStyle(
-                                        fontSize: 14,
-                                        color: Colors.white.withOpacity(0.8),
-                                        fontWeight: FontWeight.w400,
+                                      SizedBox(height: 5),
+                                      Text(
+                                        eventLocation,
+                                        style: TextStyle(
+                                          fontSize: 14,
+                                          color: Colors.white.withOpacity(0.8),
+                                          fontWeight: FontWeight.w400,
+                                        ),
+                                        overflow: TextOverflow.ellipsis,
+                                        maxLines: 1,
                                       ),
-                                    ),
-                                  ],
+                                    ],
+                                  ),
                                 ),
                                 IconButton(
                                   icon: Icon(Icons.delete, color: Colors.white),

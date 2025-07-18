@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -22,20 +23,31 @@ class _OpenstreetmapState extends State<Openstreetmap> {
   bool isLoading = true;
   LatLng? _currentLocation;
   LatLng? _destination;
-
   List<LatLng> _route = [];
-  @override
+  StreamSubscription<LocationData>? _locationSubscription;
+
   @override
   void initState() {
     super.initState();
     _initializeLocation();
   }
 
+  @override
+  void dispose() {
+    _locationSubscription?.cancel();
+    _locationController.dispose();
+    super.dispose();
+  }
+
   Future<void> _initializeLocation() async {
     if (!await _checktheRequestPermissions()) return;
 
-    _location.onLocationChanged.listen((LocationData locationData) {
-      if (locationData.latitude != null && locationData.longitude != null) {
+    _locationSubscription = _location.onLocationChanged.listen((
+      LocationData locationData,
+    ) {
+      if (locationData.latitude != null &&
+          locationData.longitude != null &&
+          mounted) {
         setState(() {
           _currentLocation = LatLng(
             locationData.latitude!,
@@ -48,41 +60,54 @@ class _OpenstreetmapState extends State<Openstreetmap> {
   }
 
   Future<void> _fetchCoordinatesPoints(String location) async {
-    final url = Uri.parse(
-      'https://nominatim.openstreetmap.org/search?q=$location&format=json&limit=1',
-    );
-    final response = await http.get(url);
-    if (response.statusCode == 200) {
-      final data = json.decode(response.body);
-      if (data.isNotEmpty) {
-        final lat = double.parse(data[0]['lat']);
-        final lon = double.parse(data[0]['lon']);
-        setState(() {
-          _destination = LatLng(lat, lon);
-        });
-        await _fetchRoute();
+    try {
+      final url = Uri.parse(
+        'https://nominatim.openstreetmap.org/search?q=$location&format=json&limit=1',
+      );
+      final response = await http.get(url);
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        if (data.isNotEmpty) {
+          final lat = double.parse(data[0]['lat']);
+          final lon = double.parse(data[0]['lon']);
+          if (mounted) {
+            setState(() {
+              _destination = LatLng(lat, lon);
+            });
+          }
+          await _fetchRoute();
+        } else {
+          errorMessage('Location not found. Please try another location.');
+        }
       } else {
-        errorMessage('Location not found. Please try another location.');
+        errorMessage('Failed to fetch location. Please try again later.');
       }
-    } else {
-      errorMessage('Failed to fetch location. Please try again later.');
+    } catch (e) {
+      errorMessage('An error occurred: ${e.toString()}');
     }
   }
 
   Future<void> _fetchRoute() async {
-    if (_currentLocation != null && _destination != null) return;
-    final url = Uri.parse(
-      "http://router.project-osrm.org/route/v1/driving/"
-      '${_currentLocation!.longitude}, ${_currentLocation!.latitude};'
-      '${_destination!.longitude},${_destination!.latitude}?overview=full&geometries=polyline',
-    );
-    final response = await http.get(url);
-    if (response.statusCode == 200) {
-      final data = json.decode(response.body);
-      final geometry = data['routes'][0]['geometry'];
-      _decodePolyline(geometry);
-    } else {
-      errorMessage('Failed to fetch route. Please try again later.');
+    if (_currentLocation == null || _destination == null) return;
+
+    try {
+      final url = Uri.parse(
+        "http://router.project-osrm.org/route/v1/driving/"
+        '${_currentLocation!.longitude},${_currentLocation!.latitude};'
+        '${_destination!.longitude},${_destination!.latitude}?overview=full&geometries=polyline',
+      );
+      final response = await http.get(url);
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        final geometry = data['routes'][0]['geometry'];
+        if (mounted) {
+          _decodePolyline(geometry);
+        }
+      } else {
+        errorMessage('Failed to fetch route. Please try again later.');
+      }
+    } catch (e) {
+      errorMessage('Route calculation error: ${e.toString()}');
     }
   }
 
@@ -101,33 +126,38 @@ class _OpenstreetmapState extends State<Openstreetmap> {
   }
 
   Future<bool> _checktheRequestPermissions() async {
-    bool serviceEnabled = await _location.serviceEnabled();
-    if (!serviceEnabled) {
-      serviceEnabled = await _location.requestService();
-      if (!serviceEnabled) return false;
+    try {
+      bool serviceEnabled = await _location.serviceEnabled();
+      if (!serviceEnabled) {
+        serviceEnabled = await _location.requestService();
+        if (!serviceEnabled) return false;
+      }
+      PermissionStatus permissionGranted = await _location.hasPermission();
+      if (permissionGranted == PermissionStatus.denied) {
+        permissionGranted = await _location.requestPermission();
+        if (permissionGranted != PermissionStatus.granted) return false;
+      }
+      return true;
+    } catch (e) {
+      errorMessage('Permission error: ${e.toString()}');
+      return false;
     }
-    PermissionStatus permissionGranted = await _location.hasPermission();
-    if (permissionGranted == PermissionStatus.denied) {
-      permissionGranted = await _location.requestPermission();
-      if (permissionGranted != PermissionStatus.granted) return false;
-    }
-    return true;
   }
 
   Future<void> _userCurrentLocation() async {
     if (_currentLocation != null) {
       _mapController.move(_currentLocation!, 15);
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Current location not found')),
-      );
+      errorMessage('Current location not found');
     }
   }
 
   void errorMessage(String message) {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(message)));
+    if (mounted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(message)));
+    }
   }
 
   @override
@@ -135,25 +165,26 @@ class _OpenstreetmapState extends State<Openstreetmap> {
     return Scaffold(
       appBar: AppBar(
         foregroundColor: Colors.white,
-        title: Text('OpenStreetMap'),
+        title: const Text('OpenStreetMap'),
         backgroundColor: Colors.blue,
       ),
       body: Stack(
         children: [
-          isLoading
-              ? Center(child: CircularProgressIndicator())
+          isLoading || _currentLocation == null
+              ? const Center(child: CircularProgressIndicator())
               : FlutterMap(
                 mapController: _mapController,
                 options: MapOptions(
-                  initialCenter: _currentLocation ?? LatLng(0, 0),
-                  initialZoom: 2,
+                  initialCenter: _currentLocation ?? const LatLng(0, 0),
+                  initialZoom: 15,
                   minZoom: 0,
-                  maxZoom: 100,
+                  maxZoom: 18,
                 ),
                 children: [
                   TileLayer(
                     urlTemplate:
                         'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                    userAgentPackageName: 'com.example.app',
                   ),
                   CurrentLocationLayer(
                     style: LocationMarkerStyle(
@@ -183,7 +214,7 @@ class _OpenstreetmapState extends State<Openstreetmap> {
                         Polyline(
                           points: _route,
                           strokeWidth: 5,
-                          color: Colors.red,
+                          color: Colors.blue,
                         ),
                       ],
                     ),
@@ -234,7 +265,7 @@ class _OpenstreetmapState extends State<Openstreetmap> {
         elevation: 0,
         onPressed: _userCurrentLocation,
         backgroundColor: Colors.blue,
-        child: Icon(Icons.my_location, size: 30, color: Colors.white),
+        child: const Icon(Icons.my_location, size: 30, color: Colors.white),
       ),
     );
   }

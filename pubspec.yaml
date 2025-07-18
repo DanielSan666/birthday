@@ -47,7 +47,8 @@ dependencies:
   flutter_map_location_marker: ^10.0.0
   location: ^8.0.0
   flutter_polyline_points: ^2.1.0
-  flutter_local_notifications: ^19.0.0
+  flutter_launcher_icons: ^0.14.3
+  awesome_notifications: ^0.10.1
 
 dev_dependencies:
   flutter_test:
@@ -62,7 +63,11 @@ dev_dependencies:
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
-
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "assets/img/events.png"
+  remove_alpha_ios: true
 # The following section is specific to Flutter packages.
 flutter:
 
@@ -72,8 +77,8 @@ flutter:
   uses-material-design: true
 
   # To add assets to your application, add an assets section, like this:
-  # assets:
-  #   - images/a_dot_burr.jpeg
+  assets:
+      - assets/img/events.png
   #   - images/a_dot_ham.jpeg
 
   # An image asset can refer to one or more resolution-specific "variants", see
